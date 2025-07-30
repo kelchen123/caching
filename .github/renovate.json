@@ -1,47 +1,33 @@
 {
-  "extends": ["github>konflux-ci/mintmaker//config/renovate/renovate.json"],
+  "extends": ["config:recommended"],
+  "baseBranches": ["test-renovate-automerge"],
+  "schedule": ["at any time"],
   "automergeStrategy": "merge-commit",
   "platformAutomerge": true,
   "packageRules": [
     {
-      "description": "Auto-merge patch updates for Konflux components",
-      "matchUpdateTypes": ["patch", "digest"],
-      "matchPackagePatterns": ["^quay.io/konflux-ci/"],
+      "description": "Test auto-merge for ALL updates (aggressive for testing)",
+      "matchUpdateTypes": ["patch", "minor", "digest"],
       "automerge": true,
       "autoApprove": true
     },
     {
-      "description": "Group Tekton bundle updates together",
-      "groupName": "tekton-bundles",
-      "matchPackagePatterns": ["quay.io/konflux-ci/tekton-catalog/"],
-      "automerge": true,
-      "autoApprove": true
-    },
-    {
-      "description": "Group container base image updates",
-      "groupName": "container-images",
+      "description": "Group Kubernetes ecosystem dependencies to prevent version conflicts",
+      "groupName": "kubernetes-ecosystem",
       "matchPackagePatterns": [
-        "registry.access.redhat.com/",
-        "registry.fedoraproject.org/"
+        "^k8s.io/",
+        "^sigs.k8s.io/"
       ],
-      "matchUpdateTypes": ["patch", "digest"],
-      "automerge": true,
-      "autoApprove": true
-    },
-    {
-      "description": "Auto-merge Go toolchain patch updates only",
-      "matchPackageNames": ["go"],
-      "matchDatasources": ["golang-version"],
-      "matchUpdateTypes": ["patch"],
-      "automerge": true,
-      "autoApprove": true
-    },
-    {
-      "description": "Group Go dependencies for manual review",
-      "groupName": "go-dependencies",
       "matchDatasources": ["go"],
-      "automerge": false,
-      "autoApprove": false
+      "automerge": true,
+      "autoApprove": true
+    },
+    {
+      "description": "Group Go dependencies for testing",
+      "groupName": "go-dependencies", 
+      "matchDatasources": ["go"],
+      "automerge": true,
+      "autoApprove": true
     }
   ]
 } 
