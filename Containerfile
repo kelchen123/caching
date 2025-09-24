@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi10/ubi-minimal@sha256:53de6ac7c3e830b0ddfc9867ff6a8092785bcf156ab4e63dfa9af83c880fd988 AS squid-base
+FROM registry.access.redhat.com/ubi10/ubi-minimal@sha256:649f7ce8082531148ac5e45b61612046a21e36648ab096a77e6ba0c94428cf60 AS squid-base
 
 ENV NAME="konflux-ci/squid"
 ENV SUMMARY="The Squid proxy caching server for Konflux CI"
@@ -44,7 +44,7 @@ RUN echo "pid_filename /run/squid/squid.pid" >> /etc/squid/squid.conf && \
 # ==========================================
 # Stage 2: Go builder base (toolchain + deps cache)
 # ==========================================
-FROM registry.access.redhat.com/ubi10/ubi-minimal@sha256:53de6ac7c3e830b0ddfc9867ff6a8092785bcf156ab4e63dfa9af83c880fd988 AS go-builder
+FROM registry.access.redhat.com/ubi10/ubi-minimal@sha256:649f7ce8082531148ac5e45b61612046a21e36648ab096a77e6ba0c94428cf60 AS go-builder
 
 # Install required packages for Go build
 RUN microdnf install -y \
