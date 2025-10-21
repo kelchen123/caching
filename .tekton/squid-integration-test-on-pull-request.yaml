@@ -1,0 +1,66 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  annotations:
+    build.appstudio.openshift.io/repo: https://github.com/konflux-ci/caching?rev={{revision}}
+    build.appstudio.redhat.com/commit_sha: '{{revision}}'
+    build.appstudio.redhat.com/pull_request_number: '{{pull_request_number}}'
+    build.appstudio.redhat.com/target_branch: '{{target_branch}}'
+    pipelinesascode.tekton.dev/max-keep-runs: "3"
+    pipelinesascode.tekton.dev/on-cel-expression: |
+      event == "pull_request" && target_branch == "main"
+  labels:
+    appstudio.openshift.io/application: caching
+    appstudio.openshift.io/component: squid
+    pipelines.appstudio.openshift.io/type: test
+  name: squid-integration-test-on-pull-request
+  namespace: konflux-vanguard-tenant
+spec:
+  params:
+    - name: SNAPSHOT
+      value: '{"components": [{"name":"squid", "containerImage": "quay.io/redhat-user-workloads/konflux-vanguard-tenant/caching/squid:on-pr-{{revision}}"}]}'
+    - name: test-name
+      value: squid-openshift-e2e
+    - name: ocp-version
+      value: "4.17"
+    - name: test-event-type
+      value: pull_request
+    - name: konflux-test-infra-secret
+      value: konflux-test-infra
+    - name: cloud-credential-key
+      value: aws-credentials
+    - name: replicas
+      value: "3"
+    - name: machine-type
+      value: m5.xlarge
+    - name: oci-container-repo
+      value: quay.io/redhat-user-workloads/konflux-vanguard-tenant/caching/test-artifacts
+    - name: squid-image
+      value: quay.io/redhat-user-workloads/konflux-vanguard-tenant/caching/squid:on-pr-{{revision}}
+    - name: squid-tester-image
+      value: quay.io/redhat-user-workloads/konflux-vanguard-tenant/caching/squid-tester:on-pr-{{revision}}
+    - name: git-url
+      value: '{{source_url}}'
+    - name: git-revision
+      value: '{{revision}}'
+  
+  pipelineRef:
+    resolver: git
+    params:
+      - name: url
+        value: https://github.com/konflux-ci/caching.git
+      - name: revision
+        value: '{{revision}}'
+      - name: pathInRepo
+        value: .tekton/squid-integration-test.yaml
+  
+  workspaces:
+    - name: cluster-credentials
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+

@@ -1,0 +1,278 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: squid-e2e-tests
+spec:
+  description: |-
+    This pipeline automates the process of running end-to-end tests for Squid
+    on an ephemeral OpenShift cluster using EaaS (Environment as a Service).
+  params:
+    - name: SNAPSHOT
+      description: 'The JSON string representing the snapshot of the application under test.'
+      default: '{"components": [{"name":"squid", "containerImage": "quay.io/redhat-user-workloads/konflux-vanguard-tenant/caching/squid:latest"}]}'
+      type: string
+    - name: test-name
+      description: 'The name of the test corresponding to a defined Konflux integration test.'
+      default: 'squid-e2e'
+    - name: ocp-version
+      description: 'The OpenShift version to use for the ephemeral cluster deployment.'
+      type: string
+      default: "4.17"
+    - name: test-event-type
+      description: 'Indicates if the test is triggered by a Pull Request or Push event.'
+      default: 'pull_request'
+    - name: machine-type
+      description: 'The EC2 instance type for cluster worker nodes (amd64 or arm64).'
+      type: string
+      default: "m5.xlarge"
+    - name: oci-container-repo
+      default: 'quay.io/konflux-test-storage/squid-team/e2e-tests'
+      description: The ORAS container used to store all test artifacts.
+    - name: squid-image
+      description: 'Squid container image to test.'
+      type: string
+    - name: squid-tester-image
+      description: 'Squid tester container image with E2E test binaries.'
+      type: string
+    - name: git-url
+      description: 'Git repository URL'
+      type: string
+    - name: git-revision
+      description: 'Git revision (branch, tag, or commit)'
+      type: string
+      default: 'main'
+  
+  workspaces:
+    - name: cluster-credentials
+      description: Workspace to store cluster credentials
+  
+  tasks:
+    - name: test-metadata
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: common/tasks/test-metadata/0.1/test-metadata.yaml
+      params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+        - name: test-name
+          value: $(context.pipelineRun.name)
+    
+    # Step 1: Provision EaaS namespace
+    - name: provision-eaas-space
+      when:
+        - input: "$(tasks.test-metadata.results.test-event-type)"
+          operator: in
+          values: ["pull_request"]
+      runAfter:
+        - test-metadata
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/build-definitions.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: task/eaas-provision-space/0.1/eaas-provision-space.yaml
+      params:
+        - name: ownerName
+          value: $(context.pipelineRun.name)
+        - name: ownerUid
+          value: $(context.pipelineRun.uid)
+    
+    # Step 2: Get supported OpenShift versions
+    - name: get-supported-versions
+      when:
+        - input: "$(tasks.test-metadata.results.test-event-type)"
+          operator: in
+          values: ["pull_request"]
+      runAfter:
+        - provision-eaas-space
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/build-definitions.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: task/eaas-get-supported-ephemeral-cluster-versions/0.1/eaas-get-supported-ephemeral-cluster-versions.yaml
+      params:
+        - name: eaasSpaceSecretRef
+          value: $(tasks.provision-eaas-space.results.secretRef)
+    
+    # Step 3: Get latest patch version for the specified minor version
+    - name: get-latest-version
+      when:
+        - input: "$(tasks.test-metadata.results.test-event-type)"
+          operator: in
+          values: ["pull_request"]
+      runAfter:
+        - get-supported-versions
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/build-definitions.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: task/eaas-get-latest-openshift-version-by-prefix/0.1/eaas-get-latest-openshift-version-by-prefix.yaml
+      params:
+        - name: prefix
+          value: $(params.ocp-version)
+    
+    # Step 4: Provision ephemeral cluster
+    - name: provision-cluster
+      when:
+        - input: "$(tasks.test-metadata.results.test-event-type)"
+          operator: in
+          values: ["pull_request"]
+      runAfter:
+        - get-latest-version
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/build-definitions.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: task/eaas-create-ephemeral-cluster-hypershift-aws/0.1/eaas-create-ephemeral-cluster-hypershift-aws.yaml
+      params:
+        - name: eaasSpaceSecretRef
+          value: $(tasks.provision-eaas-space.results.secretRef)
+        - name: version
+          value: $(tasks.get-latest-version.results.version)
+        - name: instanceType
+          value: $(params.machine-type)
+    
+    # Step 5: Get cluster credentials
+    - name: get-credentials
+      when:
+        - input: "$(tasks.test-metadata.results.test-event-type)"
+          operator: in
+          values: ["pull_request"]
+      runAfter:
+        - provision-cluster
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/build-definitions.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: task/eaas-get-ephemeral-cluster-credentials/0.1/eaas-get-ephemeral-cluster-credentials.yaml
+      params:
+        - name: eaasSpaceSecretRef
+          value: $(tasks.provision-eaas-space.results.secretRef)
+        - name: clusterName
+          value: $(tasks.provision-cluster.results.clusterName)
+      workspaces:
+        - name: credentials
+          workspace: cluster-credentials
+    
+    # Step 6: Run E2E tests
+    - name: squid-e2e-tests
+      timeout: 2h
+      when:
+        - input: "$(tasks.test-metadata.results.test-event-type)"
+          operator: in
+          values: ["pull_request"]
+      runAfter:
+        - get-credentials
+      taskSpec:
+        params:
+          - name: squid-image
+          - name: tester-image
+          - name: git-url
+          - name: git-revision
+        workspaces:
+          - name: credentials
+        steps:
+          - name: deploy-and-test
+            image: $(params.tester-image)
+            workingDir: /workspace/credentials
+            script: |
+              #!/bin/bash
+              set -euo pipefail
+              
+              echo "🔐 Setting up kubeconfig..."
+              export KUBECONFIG=/workspace/credentials/kubeconfig
+              
+              # Verify we're on OpenShift
+              oc version
+              if ! oc api-resources | grep -q "route.openshift.io"; then
+                echo "❌ Not on OpenShift!"
+                exit 1
+              fi
+              echo "✅ Confirmed: Running on OpenShift"
+              
+              echo "📦 Cloning repository for Helm chart..."
+              git clone $(params.git-url) /workspace/source
+              cd /workspace/source
+              git checkout $(params.git-revision)
+              
+              echo "🚀 Deploying Squid via Helm..."
+              oc create namespace proxy || true
+              oc project proxy
+              
+              # Install Helm
+              curl -fsSL https://get.helm.sh/helm-v3.18.6-linux-amd64.tar.gz | tar -xz
+              mv linux-amd64/helm /usr/local/bin/
+              
+              # Deploy Squid
+              helm repo add jetstack https://charts.jetstack.io
+              helm repo update
+              cd squid
+              helm dependency build
+              
+              helm install squid . \
+                --namespace proxy \
+                --set image.repository=$(echo $(params.squid-image) | cut -d: -f1) \
+                --set image.tag=$(echo $(params.squid-image) | cut -d: -f2) \
+                --set envSettings.release.test.image.repository=$(echo $(params.tester-image) | cut -d: -f1) \
+                --set envSettings.release.test.image.tag=$(echo $(params.tester-image) | cut -d: -f2) \
+                --wait \
+                --timeout=10m
+              
+              echo "✅ Squid deployed"
+              oc get pods -n proxy
+              
+              echo "🧪 Running Helm tests (executes test-pod.yaml)..."
+              helm test squid --namespace proxy --timeout 90m
+              
+              echo "✅ All E2E tests passed!"
+      params:
+        - name: squid-image
+          value: "$(params.squid-image)"
+        - name: tester-image
+          value: "$(params.squid-tester-image)"
+        - name: git-url
+          value: "$(params.git-url)"
+        - name: git-revision
+          value: "$(params.git-revision)"
+      workspaces:
+        - name: credentials
+          workspace: cluster-credentials
+  
+  finally:
+    - name: cleanup-report
+      taskSpec:
+        steps:
+          - name: report
+            image: registry.redhat.io/ubi9/ubi-minimal:latest
+            script: |
+              #!/bin/bash
+              echo "🧹 Cleanup complete"
+              echo "Ephemeral cluster and namespace will auto-delete:"
+              echo "  - Namespace: 4 hours after creation"
+              echo "  - Cluster: 2 hours after creation or when PipelineRun is deleted"
