@@ -6,7 +6,7 @@ toolchain go1.25.4
 
 require (
 	github.com/cert-manager/cert-manager v1.18.2
-	github.com/magefile/mage v1.15.0
+	github.com/magefile/mage v1.17.2
 	github.com/onsi/ginkgo/v2 v2.25.3
 	github.com/onsi/gomega v1.38.2
 	github.com/prometheus/client_golang v1.23.2
