@@ -110,4 +110,24 @@ var _ = Describe("Nginx Redirect Interception Tests", Label("nginx"), Ordered, S
 		Expect(resp3.StatusCode).To(Equal(http.StatusForbidden),
 			"Banned request should return 403, not cached 200")
 	})
+
+	DescribeTable("should reject local or internal redirect targets",
+		func(target string) {
+			reqURL := testhelpers.GetNginxURL() + "/redirect?url=" + url.QueryEscape(target) +
+				"&" + generateCacheBuster("deny-"+target)
+
+			resp, err := client.Get(reqURL)
+			Expect(err).NotTo(HaveOccurred())
+			defer resp.Body.Close()
+
+			Expect(resp.StatusCode).To(Equal(http.StatusBadGateway),
+				"Local/internal redirect target %q should be rejected with 502", target)
+		},
+		Entry("loopback", "http://127.0.0.1/"),
+		Entry("cloud metadata", "http://169.254.169.254/latest/meta-data/"),
+		Entry("other cluster service", "http://other-service.svc.cluster.local/"),
+		Entry("absolute cluster service DNS name", "http://other-service.svc.cluster.local./"),
+		Entry("relative location", "/relative"),
+		Entry("protocol-relative location", "//127.0.0.1/"),
+	)
 })
