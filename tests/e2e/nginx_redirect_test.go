@@ -129,5 +129,30 @@ var _ = Describe("Nginx Redirect Interception Tests", Label("nginx"), Ordered, S
 		Entry("absolute cluster service DNS name", "http://other-service.svc.cluster.local./"),
 		Entry("relative location", "/relative"),
 		Entry("protocol-relative location", "//127.0.0.1/"),
+		Entry("expanded IPv6 loopback", "http://[0:0:0:0:0:0:0:1]/"),
+		Entry("zero-padded IPv6 loopback", "http://[::0001]/"),
+		Entry("IPv4-mapped loopback", "http://[::ffff:127.0.0.1]/"),
 	)
+
+	// stub_status on :8081 is reachable from inside the nginx pod. If the map
+	// allowed an IPv4-mapped loopback Location, @handle_redirect would fetch it
+	// and return 200 with an "Active connections" body (Avi's bypass). Denial
+	// must yield 502 without that body — proving the local listener got no hit.
+	It("should not fetch IPv4-mapped loopback via reachable stub_status", func() {
+		target := "http://[::ffff:127.0.0.1]:8081/stub_status"
+		reqURL := testhelpers.GetNginxURL() + "/redirect?url=" + url.QueryEscape(target) +
+			"&" + generateCacheBuster("deny-mapped-stub-status")
+
+		resp, err := client.Get(reqURL)
+		Expect(err).NotTo(HaveOccurred())
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(resp.StatusCode).To(Equal(http.StatusBadGateway),
+			"Mapped loopback redirect to stub_status must be rejected")
+		Expect(string(body)).NotTo(ContainSubstring("Active connections"),
+			"stub_status must not have been fetched/cached via the mapped loopback redirect")
+	})
 })

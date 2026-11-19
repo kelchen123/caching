@@ -114,10 +114,12 @@ data:
             "~*^https?://([^/?#]*@)?{{ $upstreamHostRegex }}\.?(:\d+)?([/?#]|$)" 0;
             {{- end }}
 
-            # Loopback
+            # Loopback (IPv4, hostname, and common IPv6 spellings)
             "~*^https?://([^/?#]*@)?127(?:\.\d+){3}(:\d+)?([/?#]|$)" 1;
             "~*^https?://([^/?#]*@)?localhost\.?(:\d+)?([/?#]|$)" 1;
             "~*^https?://([^/?#]*@)?\[::1\](:\d+)?([/?#]|$)" 1;
+            "~*^https?://([^/?#]*@)?\[0:0:0:0:0:0:0:1\](:\d+)?([/?#]|$)" 1;
+            "~*^https?://([^/?#]*@)?\[::0{0,3}1\](:\d+)?([/?#]|$)" 1;
 
             # Link-local / cloud metadata
             "~*^https?://([^/?#]*@)?169\.254(?:\.\d+){2}(:\d+)?([/?#]|$)" 1;
@@ -130,6 +132,14 @@ data:
 
             # CGNAT (aligned with Squid localnet ACLs)
             "~*^https?://([^/?#]*@)?100\.(?:6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])(?:\.\d+){2}(:\d+)?([/?#]|$)" 1;
+
+            # IPv4-mapped IPv6 (:ffff:) forms of the IPv4 denials above
+            "~*^https?://([^/?#]*@)?\[::ffff:127(?:\.\d+){3}\](:\d+)?([/?#]|$)" 1;
+            "~*^https?://([^/?#]*@)?\[::ffff:169\.254(?:\.\d+){2}\](:\d+)?([/?#]|$)" 1;
+            "~*^https?://([^/?#]*@)?\[::ffff:10(?:\.\d+){3}\](:\d+)?([/?#]|$)" 1;
+            "~*^https?://([^/?#]*@)?\[::ffff:192\.168(?:\.\d+){2}\](:\d+)?([/?#]|$)" 1;
+            "~*^https?://([^/?#]*@)?\[::ffff:172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d+){2}\](:\d+)?([/?#]|$)" 1;
+            "~*^https?://([^/?#]*@)?\[::ffff:100\.(?:6[4-9]|[7-9]\d|1[0-1]\d|12[0-7])(?:\.\d+){2}\](:\d+)?([/?#]|$)" 1;
 
             # Kubernetes Service DNS (other than the configured upstream above).
             # Uses chart clusterDomain; optional trailing DNS dot for absolute names.

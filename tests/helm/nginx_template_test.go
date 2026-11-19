@@ -423,6 +423,12 @@ var _ = Describe("Helm Template Nginx Configuration", func() {
 				"Should deny link-local / metadata addresses")
 			Expect(configMap).To(ContainSubstring(`127(?:\.\d+){3}`),
 				"Should deny loopback addresses")
+			Expect(configMap).To(ContainSubstring(`\[0:0:0:0:0:0:0:1\]`),
+				"Should deny expanded IPv6 loopback")
+			Expect(configMap).To(ContainSubstring(`\[::0{0,3}1\]`),
+				"Should deny zero-padded IPv6 loopback such as [::0001]")
+			Expect(configMap).To(ContainSubstring(`\[::ffff:127(?:\.\d+){3}\]`),
+				"Should deny IPv4-mapped loopback")
 
 			upstreamAllow := `"~*^https?://([^/?#]*@)?nginx-test-backend\.caching\.svc\.cluster\.local\.?(:\d+)?([/?#]|$)" 0;`
 			clusterDeny := `"~*^https?://([^/?#]*@)?[^/?#:]+\.cluster\.local\.?(:\d+)?([/?#]|$)" 1;`
